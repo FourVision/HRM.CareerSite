@@ -22,9 +22,9 @@ variables:
   # - AzureSubscriptionServiceConnection
   # - AzureSubscriptionId
   # - ResourceGroupName
+  # - WebAppName
 
   InfrastructureTemplateFile: azure-web-app-careersite.bicep
-  InfraWebAppName: ahrm-careersite
 
 stages:
   - stage: Deploy_Infrastructure
@@ -50,7 +50,7 @@ stages:
 
                 az account set --subscription $(AzureSubscriptionId)
 
-                $outputsJson = az deployment group create --resource-group $(ResourceGroupName) --template-file $(InfrastructureTemplateFile) --parameters webAppName=$(InfraWebAppName) --query properties.outputs -o json
+                $outputsJson = az deployment group create --resource-group $(ResourceGroupName) --template-file $(InfrastructureTemplateFile) --parameters webAppName=$(WebAppName) --query properties.outputs -o json
                 if ($LASTEXITCODE -ne 0) {
                   throw "Bicep deployment failed. Verify the service connection/SPN has at least Contributor access on resource group $(ResourceGroupName)."
                 }
@@ -60,20 +60,18 @@ stages:
                 }
 
                 $outputs = $outputsJson | ConvertFrom-Json
-                $webAppName = $outputs.webAppNameOutput.value
+                $deployedWebAppName = $outputs.webAppNameOutput.value
 
-                if ([string]::IsNullOrWhiteSpace($webAppName)) {
+                if ([string]::IsNullOrWhiteSpace($deployedWebAppName)) {
                   throw "Output webAppNameOutput is empty. Check Bicep outputs and deployment result."
                 }
 
-                Write-Host "##vso[task.setvariable variable=WebAppName;isOutput=true]$webAppName"
+                Write-Host "##vso[task.setvariable variable=DeployedWebAppName;isOutput=true]$deployedWebAppName"
 
   - stage: Deploy_Web_App
     displayName: Deploy CareerSite Web App
     dependsOn: Deploy_Infrastructure
     condition: in(dependencies.Deploy_Infrastructure.result, 'Succeeded', 'Skipped')
-    variables:
-      WebAppName: $(InfraWebAppName)
     jobs:
       - job: BuildAndDeployWebApp
         displayName: Build and Deploy Web App

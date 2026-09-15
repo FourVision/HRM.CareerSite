@@ -8,6 +8,7 @@
     <File Path="azure-web-app-careersite.bicep" />
     <File Path="HrmCareerSite.slnLaunch" />
     <File Path="nuget.config" />
+    <File Path="README.md" />
   </Folder>
   <Project Path="CareerSite/Hrm.CareerSite.csproj" />
 </Solution>
