@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".editorconfig" />
+    <File Path=".github/workflows/azure-web-app-careersite.yml" />
+    <File Path=".gitignore" />
+    <File Path="azure-web-app-pipelines-GitHub.yml" />
+    <File Path="azure-web-app-pipelines.yml" />
+    <File Path="azure-web-app-careersite.bicep" />
+    <File Path="HrmCareerSite.slnLaunch" />
+    <File Path="nuget.config" />
+  </Folder>
+  <Project Path="CareerSite/Hrm.CareerSite.csproj" />
+</Solution>

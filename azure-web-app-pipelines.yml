@@ -1,0 +1,108 @@
+trigger:
+  batch: true
+  branches:
+    include:
+      - master
+
+parameters:
+  - name: DeployInfrastructure
+    displayName: Deploy or update infrastructure (Bicep)
+    type: boolean
+    default: false
+
+pr: none
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  BuildConfiguration: Release
+
+  # Runtime variables expected from Azure DevOps pipeline variables or variable groups:
+  # - AzureSubscriptionServiceConnection
+  # - AzureSubscriptionId
+  # - ResourceGroupName
+
+  InfrastructureTemplateFile: azure-web-app-careersite.bicep
+  InfraWebAppName: ahrm-careersite
+
+stages:
+  - stage: Deploy_Infrastructure
+    displayName: Deploy Infrastructure (Bicep)
+    condition: and(succeeded(), eq(${{ parameters.DeployInfrastructure }}, true))
+    jobs:
+      - job: DeployInfrastructure
+        displayName: Deploy Infrastructure
+        steps:
+          - checkout: self
+            submodules: true
+
+          - task: AzureCLI@2
+            name: DeployInfra
+            displayName: Deploy Bicep template and export outputs
+            inputs:
+              azureSubscription: $(AzureSubscriptionServiceConnection)
+              scriptType: pscore
+              scriptLocation: inlineScript
+              inlineScript: |
+                $ErrorActionPreference = 'Stop'
+                Set-StrictMode -Version Latest
+
+                az account set --subscription $(AzureSubscriptionId)
+
+                $outputsJson = az deployment group create --resource-group $(ResourceGroupName) --template-file $(InfrastructureTemplateFile) --parameters webAppName=$(InfraWebAppName) --query properties.outputs -o json
+                if ($LASTEXITCODE -ne 0) {
+                  throw "Bicep deployment failed. Verify the service connection/SPN has at least Contributor access on resource group $(ResourceGroupName)."
+                }
+
+                if ([string]::IsNullOrWhiteSpace($outputsJson)) {
+                  throw "Bicep deployment returned empty outputs."
+                }
+
+                $outputs = $outputsJson | ConvertFrom-Json
+                $webAppName = $outputs.webAppNameOutput.value
+
+                if ([string]::IsNullOrWhiteSpace($webAppName)) {
+                  throw "Output webAppNameOutput is empty. Check Bicep outputs and deployment result."
+                }
+
+                Write-Host "##vso[task.setvariable variable=WebAppName;isOutput=true]$webAppName"
+
+  - stage: Deploy_Web_App
+    displayName: Deploy CareerSite Web App
+    dependsOn: Deploy_Infrastructure
+    condition: in(dependencies.Deploy_Infrastructure.result, 'Succeeded', 'Skipped')
+    variables:
+      WebAppName: $(InfraWebAppName)
+    jobs:
+      - job: BuildAndDeployWebApp
+        displayName: Build and Deploy Web App
+        steps:
+          - checkout: self
+            submodules: true
+
+          - task: UseDotNet@2
+            displayName: Use .NET SDK 10.x
+            inputs:
+              packageType: sdk
+              version: 10.0.x
+
+          - script: dotnet publish CareerSite/Hrm.CareerSite.csproj -c $(BuildConfiguration) -o $(Build.ArtifactStagingDirectory)/webapp-publish
+            displayName: Publish CareerSite web app
+
+          - task: ArchiveFiles@2
+            displayName: Archive web app publish output
+            inputs:
+              rootFolderOrFile: $(Build.ArtifactStagingDirectory)/webapp-publish
+              includeRootFolder: false
+              archiveType: zip
+              archiveFile: $(Build.ArtifactStagingDirectory)/webapp.zip
+              replaceExistingArchive: true
+
+          - task: AzureWebApp@1
+            displayName: Deploy web app package to App Service
+            inputs:
+              azureSubscription: $(AzureSubscriptionServiceConnection)
+              appType: webAppLinux
+              appName: $(WebAppName)
+              package: $(Build.ArtifactStagingDirectory)/webapp.zip

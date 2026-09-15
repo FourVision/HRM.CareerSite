@@ -1,0 +1,12 @@
+[
+  {
+    "Name": "CareerSite",
+    "Projects": [
+      {
+        "Path": "CareerSite\\Hrm.CareerSite.csproj",
+        "Action": "Start",
+        "DebugTarget": "https"
+      }
+    ]
+  }
+]

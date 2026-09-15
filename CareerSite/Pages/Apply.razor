@@ -1,0 +1,325 @@
+@page "/apply/{JobId:guid}"
+@using Hrm.CareerSite.Enums
+@using Hrm.CareerSite.Models
+@using Hrm.CareerSite.Services
+@using Microsoft.AspNetCore.Components.Forms
+@using System.Globalization
+@inject JobListingsApiClient JobListingsApiClient
+@inject NavigationManager NavigationManager
+
+<PageTitle>Apply</PageTitle>
+
+<div class="oh-page-header">
+    <div class="oh-breadcrumb">Home · Recruitment · Opportunity Hub · Apply</div>
+    <h1 class="oh-page-title">Application - @Job?.JobTitle</h1>
+    <p class="oh-page-subtitle">Complete your application details below to apply for this opportunity.</p>
+</div>
+
+<div class="oh-section">
+    @if (IsLoading)
+    {
+        <p class="oh-text-muted">Loading application form...</p>
+    }
+    else if (LoadError is not null)
+    {
+        <div class="oh-empty-state">@LoadError</div>
+    }
+    else
+    {
+        <EditForm EditContext="EditContext" OnValidSubmit="Submit">
+            <DataAnnotationsValidator />
+
+            <div class="oh-toast @(IsAlertVisible ? "is-visible" : null)" role="status" style="top:22px; bottom:auto">@AlertMessage</div>
+
+            <article class="oh-card oh-form-section">
+                <div class="mb-4">
+                    <h2 class="oh-card-title">Personal information</h2>
+                </div>
+                <div class="oh-fields-grid">
+                    <div class="oh-field">
+                        <label for="apply-first-name">First name <span class="oh-required">*</span></label>
+                        <InputText id="apply-first-name" class="oh-input" @bind-Value="Application.FirstName" maxlength="50" />
+                        <ValidationMessage For="() => Application.FirstName" />
+                    </div>
+                    <div class="oh-field">
+                        <label for="apply-last-name-prefix">Last name prefix</label>
+                        <InputText id="apply-last-name-prefix" class="oh-input" @bind-Value="Application.LastNamePrefix" maxlength="25" />
+                        <ValidationMessage For="() => Application.LastNamePrefix" />
+                    </div>
+                    <div class="oh-field">
+                        <label for="apply-last-name">Last name <span class="oh-required">*</span></label>
+                        <InputText id="apply-last-name" class="oh-input" @bind-Value="Application.LastName" maxlength="50" />
+                        <ValidationMessage For="() => Application.LastName" />
+                    </div>
+                    <div class="oh-field">
+                        <label for="apply-email">Email address <span class="oh-required">*</span></label>
+                        <InputText id="apply-email" class="oh-input" @bind-Value="Application.Email" maxlength="256" />
+                        <ValidationMessage For="() => Application.Email" />
+                    </div>
+                    <div class="oh-field">
+                        <label for="apply-phone">Phone number <span class="oh-required">*</span></label>
+                        <InputText id="apply-phone" class="oh-input" @bind-Value="Application.PhoneNumber" maxlength="256" />
+                        <ValidationMessage For="() => Application.PhoneNumber" />
+                    </div>
+
+                    <div class="oh-field">
+                        <label for="apply-location">Country / Location <span class="oh-required">*</span></label>
+                        <InputSelect @bind-Value="Application.Location" class="oh-input">
+                            <option value="">Select country</option>
+                            @foreach (var country in CountriesList!)
+                            {
+                                <option value="@country.TwoLetterISORegionName">
+                                    @country.EnglishName (@country.TwoLetterISORegionName)
+                                </option>
+                            }
+                        </InputSelect>
+                        <ValidationMessage For="() => Application.Location" />
+                    </div>
+                </div>
+            </article>
+
+            <article class="oh-card oh-form-section">
+                <div class="mb-4">
+                    <h2 class="oh-card-title">Application details</h2>
+                </div>
+                <div class="oh-fields-grid">
+                    <div>
+                        <div class="oh-field">
+                            <label for="apply-linkedin">LinkedIn profile</label>
+                            <InputText id="apply-linkedin" class="oh-input" @bind-Value="Application.LinkedInProfile" maxlength="2000" />
+                            <ValidationMessage For="() => Application.LinkedInProfile" />
+                        </div>
+                        <div class="oh-field">
+                            <label for="apply-portfolio">Portfolio / Personal website</label>
+                            <InputText id="apply-portfolio" class="oh-input" @bind-Value="Application.PortfolioUrl" maxlength="2000" />
+                            <ValidationMessage For="() => Application.PortfolioUrl" />
+                        </div>
+                    </div>
+                    <div class="oh-field">
+                        <label for="apply-cv">Attachment <span class="oh-required">*</span></label>
+                        <InputFile id="apply-cv" class="oh-input" OnChange="OnFileSelected" />
+                        <ValidationMessage For="() => CvFileName" />
+                    </div>
+                </div>
+
+                <div class="oh-field">
+                    <label for="apply-motivation">Motivation / Why are you interested?</label>
+                    <InputTextArea id="apply-motivation" class="oh-input oh-textarea" @bind-Value="Application.Motivation" maxlength="1000" />
+                    <ValidationMessage For="() => Application.Motivation" />
+                </div>
+            </article>
+
+            <article class="oh-card oh-form-section">
+                <div class="mb-4">
+                    <h2 class="oh-card-title">Additional information</h2>
+                    <p class="oh-meta">Work eligibility</p>
+                </div>
+
+                <div class="oh-field">
+                    <div class="oh-checks oh-checks-row">
+                        <label class="oh-check">
+                            <InputCheckbox @bind-Value="Application.WorkEligibility" />
+                            Are you legally allowed to work in this country?
+                        </label>
+                        <label class="oh-check">
+                            <InputCheckbox @bind-Value="Application.RequiresSponsorship" />
+                            Do you require sponsorship now or in the future?
+                        </label>
+                    </div>
+                </div>
+
+                <p class="oh-meta">Availability</p><br>
+                <div class="oh-fields-grid">
+                    <div class="oh-field">
+                        <label for="apply-available-from">Available from</label>
+                        <InputDate id="apply-available-from" class="oh-input" @bind-Value="Application.AvailableFrom" />
+                    </div>
+                    <div class="oh-field">
+                        <label for="apply-notice-period">Notice period</label>
+                        <InputText id="apply-notice-period" class="oh-input" @bind-Value="Application.NoticePeriod" maxlength="10" />
+                        <ValidationMessage For="() => Application.NoticePeriod" />
+                    </div>
+                </div>
+            </article>
+
+            <article class="oh-card oh-form-section">
+                <div class="mb-4">
+                    <h2 class="oh-card-title">Diversity &amp; compliance</h2>
+                </div>
+
+                <div class="oh-fields-grid">
+                    <div class="oh-field">
+                        <label for="apply-gender">Gender</label>
+                        <InputSelect id="apply-gender" class="oh-input" @bind-Value="Application.Gender">
+                            @foreach (Gender x in Enum.GetValues(typeof(Gender)))
+                            {
+                                <option value="@x">@x</option>
+                            }
+                        </InputSelect>
+                    </div>
+                    <div class="oh-field">
+                        <label for="apply-nationality">Nationality</label>
+                        <InputSelect @bind-Value="Application.Nationality" class="oh-input">
+                            <option value="">Select country</option>
+                            @foreach (var country in CountriesList!)
+                            {
+                                <option value="@country.TwoLetterISORegionName">
+                                    @country.EnglishName (@country.TwoLetterISORegionName)
+                                </option>
+                            }
+                        </InputSelect>
+                    </div>
+
+                    <div class="oh-field">
+                        <label for="apply-disability">Disability status</label>
+                        <InputText id="apply-disability" class="oh-input" @bind-Value="Application.DisabilityStatus" maxlength="60" />
+                        <ValidationMessage For="() => Application.DisabilityStatus" />
+                    </div>
+                </div>
+            </article>
+
+            <div class="oh-actions">
+                <button type="button" class="oh-btn oh-btn-secondary" @onclick="Cancel">Cancel</button>
+                <button type="submit" class="oh-btn oh-btn-primary">Submit application</button>
+            </div>
+        </EditForm>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public Guid JobId { get; set; }
+
+    private JobListing? Job;
+    private bool IsLoading = true;
+    private string? LoadError;
+
+    private ExternalApplication Application = new();
+
+    private EditContext EditContext = default!;
+    private ValidationMessageStore MessageStore = default!;
+    private string? AlertMessage { get; set; }
+    private bool IsAlertVisible { get; set; }
+    private CancellationTokenSource? AlertCts;
+
+    private string? CvFileName { get; set; }
+    private byte[]? CvContent;
+    private List<RegionInfo>? CountriesList;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            IsLoading = true;
+            IReadOnlyList<JobListing> jobs = await JobListingsApiClient.GetJobsAsync();
+            Job = jobs.FirstOrDefault(x => x.Id == JobId);
+            if (Job is null)
+            {
+                LoadError = "Job not found.";
+            }
+            EditContext = new EditContext(Application);
+            MessageStore = new ValidationMessageStore(EditContext);
+            CountriesList = CultureInfo.GetCultures(CultureTypes.SpecificCultures).Select(c => new RegionInfo(c.Name)).GroupBy(r => r.TwoLetterISORegionName).Select(g => g.First()).OrderBy(r => r.EnglishName).ToList();
+        }
+        catch (HttpRequestException)
+        {
+            LoadError = "Unable to load job right now.";
+        }
+        catch (InvalidOperationException)
+        {
+            LoadError = "Unable to load job right now.";
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        const long maxFileSize = 10_000_000;
+        var file = e.File;
+        var cvField = new FieldIdentifier(this, nameof(CvFileName));
+        MessageStore.Clear(cvField);
+
+        if (file.Name.Length > 100)
+        {
+            CvFileName = string.Empty;
+            CvContent = null;
+            MessageStore.Add(cvField, "File name should be less than 100 characters.");
+            EditContext.NotifyValidationStateChanged();
+            return;
+        }
+        if (file.Size > maxFileSize)
+        {
+            CvFileName = string.Empty;
+            CvContent = null;
+
+            MessageStore.Add(cvField, "Please upload attachment smaller than 10 MB.");
+            EditContext.NotifyValidationStateChanged();
+            return;
+        }
+        CvFileName = file.Name;
+        using var ms = new MemoryStream();
+        await file.OpenReadStream(maxAllowedSize: maxFileSize).CopyToAsync(ms);
+        CvContent = ms.ToArray();
+
+        Application.FileName = file.Name;
+        Application.ContentType = file.ContentType;
+        Application.Base64Content = Convert.ToBase64String(CvContent);
+        if (!string.IsNullOrWhiteSpace(Application.Base64Content))
+        {
+            MessageStore.Clear();
+        }
+    }
+
+    private async Task Submit()
+    {
+        MessageStore.Clear();
+        AlertMessage = null;
+        if (string.IsNullOrWhiteSpace(Application.Base64Content))
+        {
+            MessageStore.Add(new FieldIdentifier(this, nameof(CvFileName)), "Please upload a CV.");
+            EditContext.NotifyValidationStateChanged();
+            return;
+        }
+        try
+        {
+            Application.JobId = JobId;
+            bool success = await JobListingsApiClient.SubmitApplicationAsync(Application);
+            await ShowAlertAsync(success);
+        }
+        catch (Exception)
+        {
+            await ShowAlertAsync(false);
+        }
+        finally
+        {
+            Cancel();
+        }
+    }
+
+    private async Task ShowAlertAsync(bool success, int milliseconds = 4000)
+    {
+        AlertCts?.Cancel();
+        AlertCts = new CancellationTokenSource();
+        AlertMessage = success ? "Your application has been submitted successfully." : "Unable to submit your application right now. Please try again later.";
+        IsAlertVisible = true;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            await Task.Delay(milliseconds, AlertCts.Token);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        IsAlertVisible = false;
+        AlertMessage = null;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void Cancel() => NavigationManager.NavigateTo("");
+}

@@ -1,0 +1,684 @@
+@page "/"
+@using System.ComponentModel.DataAnnotations
+@using Hrm.CareerSite.Models
+@using Hrm.CareerSite.Services
+@inject JobListingsApiClient JobListingsApiClient
+@inject HrmServerRuntimeConfiguration RuntimeConfiguration
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@implements IDisposable
+
+<PageTitle>Home</PageTitle>
+
+@if (IsSetupMode)
+{
+    <div class="oh-page-header">
+        <div class="oh-breadcrumb">Home · Setup</div>
+        <h1 class="oh-page-title">Setup connection</h1>
+        <p class="oh-page-subtitle">
+            Setup mode is enabled because <code>HrmServer__Authentication__Mode</code> is configured as <code>None</code>.
+            Configure the upstream HRM connection below to continue.
+        </p>
+    </div>
+
+    <div class="oh-section">
+        <p class="oh-body-text setup-note">
+            For persistent configuration after restarts, move these values into your server environment variables
+            (for example Azure App Service application settings).
+        </p>
+
+        <EditForm Model="SetupConfiguration" OnValidSubmit="ApplySetupAsync" class="setup-form">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="setup-validation" />
+
+            <div class="oh-field">
+                <label for="hrm-host">HRM server host URL</label>
+                <InputText id="hrm-host" class="oh-input" @bind-Value="SetupConfiguration.Host" />
+            </div>
+
+            <div class="oh-field">
+                <label for="auth-mode">Authentication mode</label>
+                <InputSelect id="auth-mode" class="oh-input" @bind-Value="SetupConfiguration.Mode">
+                    <option value="ApiKey">ApiKey</option>
+                    <option value="OAuth">OAuth</option>
+                </InputSelect>
+            </div>
+
+            @if (SetupConfiguration.Mode.Equals("ApiKey", StringComparison.OrdinalIgnoreCase))
+            {
+                <div class="setup-fields-grid">
+                    <div class="oh-field">
+                        <label for="api-key-header">API key header name</label>
+                        <InputText id="api-key-header" class="oh-input" @bind-Value="SetupConfiguration.ApiKeyHeaderName" />
+                    </div>
+                    <div class="oh-field">
+                        <label for="api-key-value">API key</label>
+                        <InputText id="api-key-value" class="oh-input" @bind-Value="SetupConfiguration.ApiKey" />
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="setup-fields-grid">
+                    <div class="oh-field">
+                        <label for="oauth-tenant">OAuth tenant ID</label>
+                        <InputText id="oauth-tenant" class="oh-input" @bind-Value="SetupConfiguration.OAuthTenantId" />
+                    </div>
+                    <div class="oh-field">
+                        <label for="oauth-client-id">OAuth client ID</label>
+                        <InputText id="oauth-client-id" class="oh-input" @bind-Value="SetupConfiguration.OAuthClientId" />
+                    </div>
+                    <div class="oh-field">
+                        <label for="oauth-client-secret">OAuth client secret</label>
+                        <InputText id="oauth-client-secret" class="oh-input" @bind-Value="SetupConfiguration.OAuthClientSecret" />
+                    </div>
+                </div>
+            }
+
+            <div class="oh-actions">
+                <button class="oh-btn oh-btn-primary" type="submit" disabled="@IsApplyingSetup">Save and start site</button>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(SetupErrorMessage))
+            {
+                <p class="setup-error">@SetupErrorMessage</p>
+            }
+        </EditForm>
+    </div>
+}
+else
+{
+    <div class="oh-page-header">
+        <div class="oh-breadcrumb">Home · Recruitment · Opportunity Hub</div>
+        <h1 class="oh-page-title">Opportunity Hub</h1>
+        <p class="oh-page-subtitle">Find your next role. Search by keyword, department or location.</p>
+        <div class="oh-tabs" role="tablist">
+            <button type="button" class="oh-tab @(ActiveTab == HubTab.Opportunities ? "is-active" : null)" @onclick="() => SelectTab(HubTab.Opportunities)">Opportunities</button>
+            <button type="button" class="oh-tab @(ActiveTab == HubTab.Favorites ? "is-active" : null)" @onclick="() => SelectTab(HubTab.Favorites)">Favorites</button>
+            <button type="button" class="oh-tab @(ActiveTab == HubTab.Applications ? "is-active" : null)" @onclick="() => SelectTab(HubTab.Applications)">My applications</button>
+        </div>
+    </div>
+
+    <div class="oh-toolbar">
+        <input class="oh-input" type="search" placeholder="Search for job openings..." @bind="SearchText" @bind:event="oninput" @bind:after="ApplyFiltersLive" />
+        <select class="oh-input" @bind="Department" @bind:after="ApplyFiltersLive">
+            <option value="">All departments</option>
+            @foreach (string option in Departments)
+            {
+                <option value="@option">@option</option>
+            }
+        </select>
+        <select class="oh-input" @bind="Location" @bind:after="ApplyFiltersLive">
+            <option value="">Location</option>
+            @foreach (string option in Locations)
+            {
+                <option value="@option">@option</option>
+            }
+        </select>
+        <button type="button" class="oh-btn oh-btn-primary" @onclick="OpenFilterPanel">
+            ☰ Filters
+            <span class="oh-count">@ActiveFilterCount</span>
+        </button>
+    </div>
+
+    <div class="oh-chip-list">
+        @if (ActiveFilterCount == 0)
+        {
+            <span class="oh-text-muted">No filters applied</span>
+        }
+        else
+        {
+            @if (!string.IsNullOrWhiteSpace(Department))
+            {
+                <span class="oh-chip">Department: @Department<button type="button" aria-label="Remove department filter" @onclick="() => RemoveFilter(FilterKey.Department)">×</button></span>
+            }
+            @if (!string.IsNullOrWhiteSpace(Location))
+            {
+                <span class="oh-chip">Location: @Location<button type="button" aria-label="Remove location filter" @onclick="() => RemoveFilter(FilterKey.Location)">×</button></span>
+            }
+            @if (!string.IsNullOrWhiteSpace(Contract))
+            {
+                <span class="oh-chip">Contract: @Contract<button type="button" aria-label="Remove contract filter" @onclick="() => RemoveFilter(FilterKey.Contract)">×</button></span>
+            }
+            @if (!string.IsNullOrWhiteSpace(Experience))
+            {
+                <span class="oh-chip">Experience: @Experience<button type="button" aria-label="Remove experience filter" @onclick="() => RemoveFilter(FilterKey.Experience)">×</button></span>
+            }
+            @if (HybridAllowed)
+            {
+                <span class="oh-chip">Hybrid<button type="button" aria-label="Remove hybrid filter" @onclick="() => RemoveFilter(FilterKey.Hybrid)">×</button></span>
+            }
+            @if (RemoteAllowed)
+            {
+                <span class="oh-chip">Remote<button type="button" aria-label="Remove remote filter" @onclick="() => RemoveFilter(FilterKey.Remote)">×</button></span>
+            }
+            @if (!string.IsNullOrWhiteSpace(PostedWithinDays))
+            {
+                <span class="oh-chip">Posted: last @PostedWithinDays days<button type="button" aria-label="Remove posted filter" @onclick="() => RemoveFilter(FilterKey.Posted)">×</button></span>
+            }
+        }
+    </div>
+
+    <div class="oh-section">
+        <div class="oh-list-header">
+            <span>Showing @FilteredVacancies.Count opportunit@(FilteredVacancies.Count == 1 ? "y" : "ies")</span>
+            <span>Sort: newest first</span>
+        </div>
+
+        @if (FilteredVacancies.Count == 0)
+        {
+            <div class="oh-empty-state">No opportunities match the selected filters.</div>
+        }
+        else
+        {
+            @foreach (JobListing job in FilteredVacancies)
+            {
+                <article class="oh-card">
+                    <div class="oh-split">
+                        <div>
+                            <h2 class="oh-card-title">@job.JobTitle</h2>
+                            <p class="oh-meta">@job.DepartmentName</p>
+                            @if (job.IsApplied)
+                            {
+                                <span class="oh-badge oh-badge-info">Applied</span>
+                            }
+                            else if (job.DaysToClose is > 0 and <= 7)
+                            {
+                                <span class="oh-badge">Closing soon</span>
+                            }
+                            else if (IsRecentlyOpened(job.OpenDate))
+                            {
+                                <span class="oh-badge oh-badge-success">New</span>
+                            }
+                        </div>
+                        <div class="oh-card-aside">
+                            @{
+                                var today = DateOnly.FromDateTime(DateTime.Today); var daysAgo = today.DayNumber - job.OpenDate.DayNumber;
+                            }
+
+                            @if (job.DaysToClose.HasValue && job.DaysToClose.Value < 0)
+                            {
+                                <text>Closed @(-job.DaysToClose.Value) days ago</text>
+                            }
+                            else
+                            {
+                                <text>Posted @(daysAgo switch { 0 => "today", 1 => "1 day ago", _ => $"{daysAgo} days ago" })</text>
+                            }
+                        </div>
+                    </div>
+                    <p class="oh-body-text">@((MarkupString)GetDescription(job))</p>
+                    @if (IsDescriptionLong(job))
+                    {
+                        <a href="javascript:void(0);" class="oh-link" style="text-decoration:none; cursor:pointer;" @onclick="() => ToggleDescription(job.Id)"> @(IsExpanded(job.Id) ? "Show less" : "Show more")</a>
+                    }
+                    <div class="oh-actions">
+                        <button type="button" class="oh-btn oh-btn-primary oh-btn-compact" @onclick="() => NavigateToApply(job.Id)" disabled="@(job.DaysToClose.HasValue && job.DaysToClose < 0)">Apply</button>
+                        <button type="button" class="oh-btn oh-btn-secondary oh-btn-compact" @onclick="() => ToggleFavorite(job.Id, job.JobTitle)">@(IsFavorited(job.Id) ? "★ Remove Favorite" : "☆ Add to Favorites")</button>
+                    </div>
+                </article>
+            }
+        }
+    </div>
+
+    <div class="oh-overlay @(IsFilterPanelOpen ? "is-open" : null)" @onclick="CloseFilterPanel"></div>
+    <aside class="oh-drawer @(IsFilterPanelOpen ? "is-open" : null)" aria-label="Filters">
+        <div class="oh-drawer-header">
+            <h2>Filters</h2>
+            <button type="button" class="oh-btn oh-btn-icon" @onclick="CloseFilterPanel" aria-label="Close filters">✕</button>
+        </div>
+
+        <div class="oh-field">
+            <label for="oh-filter-department">Department</label>
+            <select id="oh-filter-department" class="oh-input" @bind="DraftDepartment">
+                <option value="">All departments</option>
+                @foreach (string option in Departments)
+                {
+                    <option value="@option">@option</option>
+                }
+            </select>
+        </div>
+
+        <div class="oh-field">
+            <label for="oh-filter-location">Location</label>
+            <select id="oh-filter-location" class="oh-input" @bind="DraftLocation">
+                <option value="">All locations</option>
+                @foreach (string option in Locations)
+                {
+                    <option value="@option">@option</option>
+                }
+            </select>
+        </div>
+
+        <div class="oh-field">
+            <label for="oh-filter-contract">Contract type</label>
+            <select id="oh-filter-contract" class="oh-input" @bind="DraftContract">
+                <option value="">All contract types</option>
+                @foreach (string option in Contracts)
+                {
+                    <option value="@option">@option</option>
+                }
+            </select>
+        </div>
+
+        <div class="oh-field">
+            <label for="oh-filter-experience">Experience level</label>
+            <select id="oh-filter-experience" class="oh-input" @bind="DraftExperience">
+                <option value="">Any</option>
+                @foreach (string option in ExperienceLevels)
+                {
+                    <option value="@option">@option</option>
+                }
+            </select>
+        </div>
+
+        <div class="oh-field">
+            <label>Working model</label>
+            <div>
+                <label class="oh-check"><input type="checkbox" @bind="DraftHybridAllowed" /> Hybrid allowed</label>
+                <label class="oh-check"><input type="checkbox" @bind="DraftRemoteAllowed" /> Remote allowed</label>
+            </div>
+        </div>
+
+        <div class="oh-field">
+            <label for="oh-filter-posted">Posted in last</label>
+            <select id="oh-filter-posted" class="oh-input" @bind="DraftPostedWithinDays">
+                <option value="">Any time</option>
+                <option value="7">7 days</option>
+                <option value="14">14 days</option>
+                <option value="30">30 days</option>
+            </select>
+        </div>
+
+        <div class="oh-drawer-actions">
+            <button type="button" class="oh-btn oh-btn-primary" @onclick="ApplyFiltersFromPanel">Apply</button>
+            <button type="button" class="oh-btn oh-btn-ghost" @onclick="ClearFilters">Clear</button>
+        </div>
+    </aside>
+
+    <div class="oh-toast @(IsNoticeVisible ? "is-visible" : null)" role="status">@NoticeMessage</div>
+}
+
+@code {
+    private readonly SetupConfigurationModel SetupConfiguration = new();
+    private bool IsSetupMode;
+    private bool IsApplyingSetup;
+    private string? SetupErrorMessage;
+
+    private readonly List<JobListing> JobListings = new();
+    private bool IsLoading = true;
+    private string? ErrorMessage;
+
+    protected HashSet<Guid> ExpandedDescriptions { get; set; } = new();
+    private const int DESCRIPTION_LIMIT = 300;
+
+    private readonly List<JobListing> FilteredVacancies = new();
+    private CancellationTokenSource? NoticeCts;
+
+    private HubTab ActiveTab = HubTab.Opportunities;
+    private bool IsFilterPanelOpen;
+    private bool IsNoticeVisible;
+    private string NoticeMessage = string.Empty;
+
+    private string SearchText = string.Empty;
+    private string Department = string.Empty;
+    private string Location = string.Empty;
+    private string Contract = string.Empty;
+    private string Experience = string.Empty;
+    private string PostedWithinDays = string.Empty;
+    private bool HybridAllowed;
+    private bool RemoteAllowed;
+
+    private string DraftDepartment = string.Empty;
+    private string DraftLocation = string.Empty;
+    private string DraftContract = string.Empty;
+    private string DraftExperience = string.Empty;
+    private string DraftPostedWithinDays = string.Empty;
+    private bool DraftHybridAllowed;
+    private bool DraftRemoteAllowed;
+
+    // Favorites stored client-side in a cookie. Cleared when user clears browser cookies.
+    private readonly HashSet<Guid> FavoriteIds = new();
+
+    private void CloseFilterPanel() => IsFilterPanelOpen = false;
+
+    private void ApplyFiltersLive() => ApplyFilters(closePanel: false, showToast: false);
+
+    private IEnumerable<string> Departments => JobListings.Select(j => j.DepartmentName).Where(s => !string.IsNullOrWhiteSpace(s))
+        .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(s => s);
+
+    private IEnumerable<string> Locations => Array.Empty<string>();
+    private IEnumerable<string> Contracts => Array.Empty<string>();
+    private IEnumerable<string> ExperienceLevels => Array.Empty<string>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (RuntimeConfiguration.IsSetupModeEnabled)
+        {
+            IsSetupMode = true;
+            IsLoading = false;
+            SetupConfiguration.Host = RuntimeConfiguration.CurrentOptions.Host;
+            return;
+        }
+
+        await LoadJobsAsync();
+        await LoadFavoritesAsync();
+    }
+
+    private async Task LoadJobsAsync()
+    {
+        IsLoading = true;
+        ErrorMessage = null;
+
+        try
+        {
+            IReadOnlyList<JobListing> jobs = await JobListingsApiClient.GetJobsAsync();
+            JobListings.Clear();
+            JobListings.AddRange(jobs);
+            ApplyFilters(closePanel: false, showToast: false);
+        }
+        catch (HttpRequestException)
+        {
+            ErrorMessage = "Unable to load job listings right now.";
+        }
+        catch (InvalidOperationException)
+        {
+            ErrorMessage = "Unable to load job listings right now.";
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    protected bool IsExpanded(Guid jobId) => ExpandedDescriptions.Contains(jobId);
+
+    protected void ToggleDescription(Guid jobId)
+    {
+        if (!ExpandedDescriptions.Add(jobId)) _ = ExpandedDescriptions.Remove(jobId);
+    }
+
+    protected static bool IsDescriptionLong(JobListing job)
+    {
+        return !string.IsNullOrWhiteSpace(job.Description) && job.Description.Length > DESCRIPTION_LIMIT;
+    }
+
+    protected string GetDescription(JobListing job)
+    {
+        return string.IsNullOrWhiteSpace(job.Description)
+            ? string.Empty
+            : IsExpanded(job.Id)
+                ? job.Description
+                : job.Description.Length > DESCRIPTION_LIMIT
+                    ? job.Description[..DESCRIPTION_LIMIT] + "..."
+                    : job.Description;
+    }
+
+    private int ActiveFilterCount
+    {
+        get
+        {
+            int count = 0;
+            if (!string.IsNullOrWhiteSpace(Department)) count++;
+            if (!string.IsNullOrWhiteSpace(Location)) count++;
+            if (!string.IsNullOrWhiteSpace(Contract)) count++;
+            if (!string.IsNullOrWhiteSpace(Experience)) count++;
+            if (HybridAllowed) count++;
+            if (RemoteAllowed) count++;
+            if (!string.IsNullOrWhiteSpace(PostedWithinDays)) count++;
+            return count;
+        }
+    }
+
+    private void SelectTab(HubTab tab)
+    {
+        if (tab == HubTab.Applications)
+        {
+            ShowNotice("My applications would open after candidate sign-in");
+            return;
+        }
+        ActiveTab = tab;
+        if (tab == HubTab.Favorites) { ApplyFavoritesView(); return; }
+        if (tab == HubTab.Opportunities) { ApplyFilters(closePanel: false, showToast: false); return; }
+        //if (tab == HubTab.Applications) ShowNotice("My applications would open after candidate sign-in");
+    }
+
+    private void OpenFilterPanel()
+    {
+        DraftDepartment = Department;
+        DraftLocation = Location;
+        DraftContract = Contract;
+        DraftExperience = Experience;
+        DraftPostedWithinDays = PostedWithinDays;
+        DraftHybridAllowed = HybridAllowed;
+        DraftRemoteAllowed = RemoteAllowed;
+        IsFilterPanelOpen = true;
+    }
+
+    private void ApplyFiltersFromPanel()
+    {
+        Department = DraftDepartment;
+        Location = DraftLocation;
+        Contract = DraftContract;
+        Experience = DraftExperience;
+        PostedWithinDays = DraftPostedWithinDays;
+        HybridAllowed = DraftHybridAllowed;
+        RemoteAllowed = DraftRemoteAllowed;
+        ApplyFilters(closePanel: true, showToast: true);
+    }
+
+    private void ClearFilters()
+    {
+        SearchText = string.Empty;
+        Department = string.Empty;
+        Location = string.Empty;
+        Contract = string.Empty;
+        Experience = string.Empty;
+        PostedWithinDays = string.Empty;
+        HybridAllowed = false;
+        RemoteAllowed = false;
+        DraftDepartment = string.Empty;
+        DraftLocation = string.Empty;
+        DraftContract = string.Empty;
+        DraftExperience = string.Empty;
+        DraftPostedWithinDays = string.Empty;
+        DraftHybridAllowed = false;
+        DraftRemoteAllowed = false;
+        ApplyFilters(closePanel: false, showToast: false);
+        ShowNotice("Filters cleared");
+    }
+
+    private void RemoveFilter(FilterKey key)
+    {
+        switch (key)
+        {
+            case FilterKey.Department: Department = string.Empty; DraftDepartment = string.Empty; break;
+            case FilterKey.Location: Location = string.Empty; DraftLocation = string.Empty; break;
+            case FilterKey.Contract: Contract = string.Empty; DraftContract = string.Empty; break;
+            case FilterKey.Experience: Experience = string.Empty; DraftExperience = string.Empty; break;
+            case FilterKey.Hybrid: HybridAllowed = false; DraftHybridAllowed = false; break;
+            case FilterKey.Remote: RemoteAllowed = false; DraftRemoteAllowed = false; break;
+            case FilterKey.Posted: PostedWithinDays = string.Empty; DraftPostedWithinDays = string.Empty; break;
+        }
+        ApplyFilters(closePanel: false, showToast: false);
+    }
+
+    private void ApplyFilters(bool closePanel, bool showToast)
+    {
+        string query = SearchText.Trim();
+        int postedLimit = int.TryParse(PostedWithinDays, out int parsedPosted) ? parsedPosted : int.MaxValue;
+
+
+        var queryable = JobListings.Where(job =>
+        {
+            bool matchesQuery = string.IsNullOrWhiteSpace(query) || $"{job.JobTitle} {job.DepartmentName} {job.Type} {job.Description} {job.JobAdText}".Contains(query, StringComparison.OrdinalIgnoreCase);
+            bool matchesDepartment = string.IsNullOrWhiteSpace(Department) || job.DepartmentName == Department;
+            bool matchesLocation = string.IsNullOrWhiteSpace(Location) || (!string.IsNullOrEmpty(job.JobAdText) && job.JobAdText.Contains(Location, StringComparison.OrdinalIgnoreCase)) || (!string.IsNullOrEmpty(job.Description) && job.Description.Contains(Location, StringComparison.OrdinalIgnoreCase));
+            bool matchesContract = string.IsNullOrWhiteSpace(Contract) || job.Type == Contract;
+            bool matchesExperience = string.IsNullOrWhiteSpace(Experience) || (!string.IsNullOrEmpty(job.JobAdText) && job.JobAdText.Contains(Experience, StringComparison.OrdinalIgnoreCase)) || (!string.IsNullOrEmpty(job.Description) && job.Description.Contains(Experience, StringComparison.OrdinalIgnoreCase));
+            bool matchesHybrid = !HybridAllowed || (!string.IsNullOrEmpty(job.JobAdText) && job.JobAdText.Contains("Hybrid", StringComparison.OrdinalIgnoreCase));
+            bool matchesRemote = !RemoteAllowed || (!string.IsNullOrEmpty(job.JobAdText) && job.JobAdText.Contains("Remote", StringComparison.OrdinalIgnoreCase));
+            int daysOpen = (DateTime.UtcNow.Date - job.OpenDate.ToDateTime(TimeOnly.MinValue).Date).Days;
+            bool matchesPosted = daysOpen <= postedLimit;
+            return matchesQuery && matchesDepartment && matchesLocation && matchesContract && matchesExperience && matchesHybrid && matchesRemote && matchesPosted;
+        });
+
+        // If the user is viewing the Favorites tab, restrict results to favorited jobs only
+        if (ActiveTab == HubTab.Favorites)
+        {
+            queryable = queryable.Where(j => FavoriteIds.Contains(j.Id));
+        }
+
+        var results = queryable.OrderByDescending(j => j.OpenDate.ToDateTime(TimeOnly.MinValue));
+
+        FilteredVacancies.Clear();
+        FilteredVacancies.AddRange(results);
+
+        if (closePanel) CloseFilterPanel();
+        if (showToast) ShowNotice($"{FilteredVacancies.Count} opportunit{(FilteredVacancies.Count == 1 ? "y" : "ies")} shown");
+    }
+
+    private static bool IsRecentlyOpened(DateOnly openDate) => (DateTime.UtcNow.Date - openDate.ToDateTime(TimeOnly.MinValue).Date).Days <= 7;
+
+    private void NavigateToApply(Guid jobId)
+    {
+        if (jobId == Guid.Empty) { ShowNotice("Unable to determine job to apply for."); return; }
+        NavigationManager.NavigateTo($"/apply/{jobId}");
+    }
+
+    private bool IsFavorited(Guid id) => FavoriteIds.Contains(id);
+
+    private async Task LoadFavoritesAsync()
+    {
+        try
+        {
+            var cookie = await JSRuntime.InvokeAsync<string>("eval", "document.cookie") ?? string.Empty;
+            var parts = cookie.Split(';', StringSplitOptions.RemoveEmptyEntries);
+            foreach (var part in parts)
+            {
+                var p = part.Trim();
+                if (p.StartsWith("hrm_favorites="))
+                {
+                    var val = p.Substring("hrm_favorites=".Length);
+                    if (!string.IsNullOrEmpty(val))
+                    {
+                        val = Uri.UnescapeDataString(val);
+                        var ids = val.Split('|', StringSplitOptions.RemoveEmptyEntries);
+                        foreach (var s in ids)
+                        {
+                            if (Guid.TryParse(s, out var g)) FavoriteIds.Add(g);
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+        catch { }
+    }
+
+    private async Task SaveFavoritesAsync()
+    {
+        try
+        {
+            var value = string.Join('|', FavoriteIds);
+            var encoded = Uri.EscapeDataString(value);
+            var js = $"document.cookie = 'hrm_favorites={encoded}; path=/; max-age=31536000; SameSite=Lax'";
+            await JSRuntime.InvokeVoidAsync("eval", js);
+        }
+        catch { }
+    }
+
+    private async void ToggleFavorite(Guid id, string title)
+    {
+        if (!FavoriteIds.Add(id)) { _ = FavoriteIds.Remove(id); ShowNotice($"{title} removed from favorites"); }
+        else { ShowNotice($"{title} added to favorites"); }
+        await SaveFavoritesAsync();
+        if (ActiveTab == HubTab.Favorites) ApplyFavoritesView();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void ApplyFavoritesView()
+    {
+        ApplyFilters(closePanel: false, showToast: false);
+    }
+
+    private async void ShowNotice(string message)
+    {
+        NoticeCts?.Cancel();
+        NoticeCts?.Dispose();
+        NoticeCts = new CancellationTokenSource();
+        CancellationToken token = NoticeCts.Token;
+        NoticeMessage = message;
+        IsNoticeVisible = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            await Task.Delay(1800, token);
+            IsNoticeVisible = false;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    public void Dispose()
+    {
+        NoticeCts?.Cancel();
+        NoticeCts?.Dispose();
+    }
+
+    private async Task ApplySetupAsync()
+    {
+        SetupErrorMessage = null;
+        IsApplyingSetup = true;
+        try
+        {
+            if (SetupConfiguration.Mode.Equals("ApiKey", StringComparison.OrdinalIgnoreCase))
+            {
+                RuntimeConfiguration.ConfigureApiKey(SetupConfiguration.Host, SetupConfiguration.ApiKeyHeaderName, SetupConfiguration.ApiKey);
+            }
+            else
+            {
+                RuntimeConfiguration.ConfigureOAuth(SetupConfiguration.Host, SetupConfiguration.OAuthTenantId, SetupConfiguration.OAuthClientId, SetupConfiguration.OAuthClientSecret);
+            }
+            IsSetupMode = false;
+            await LoadJobsAsync();
+        }
+        catch (ArgumentException exception)
+        {
+            SetupErrorMessage = exception.Message;
+        }
+        finally
+        {
+            IsApplyingSetup = false;
+        }
+    }
+
+    private enum HubTab { Opportunities, Favorites, Applications }
+    private enum FilterKey { Department, Location, Contract, Experience, Hybrid, Remote, Posted }
+
+    private sealed class SetupConfigurationModel : IValidatableObject
+    {
+        [Required]
+        [Url]
+        public string Host { get; set; } = string.Empty;
+        [Required]
+        public string Mode { get; set; } = "ApiKey";
+        public string ApiKeyHeaderName { get; set; } = "X-Api-Key";
+        public string ApiKey { get; set; } = string.Empty;
+        public string OAuthTenantId { get; set; } = string.Empty;
+        public string OAuthClientId { get; set; } = string.Empty;
+        public string OAuthClientSecret { get; set; } = string.Empty;
+        public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+        {
+            if (Mode.Equals("ApiKey", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(ApiKeyHeaderName)) yield return new ValidationResult("API key header name is required.", new[] { nameof(ApiKeyHeaderName) });
+                if (string.IsNullOrWhiteSpace(ApiKey)) yield return new ValidationResult("API key is required.", new[] { nameof(ApiKey) });
+                yield break;
+            }
+            if (!Mode.Equals("OAuth", StringComparison.OrdinalIgnoreCase)) { yield return new ValidationResult("Authentication mode must be ApiKey or OAuth.", new[] { nameof(Mode) }); yield break; }
+            if (string.IsNullOrWhiteSpace(OAuthTenantId)) yield return new ValidationResult("OAuth tenant ID is required.", new[] { nameof(OAuthTenantId) });
+            if (string.IsNullOrWhiteSpace(OAuthClientId)) yield return new ValidationResult("OAuth client ID is required.", new[] { nameof(OAuthClientId) });
+            if (string.IsNullOrWhiteSpace(OAuthClientSecret)) yield return new ValidationResult("OAuth client secret is required.", new[] { nameof(OAuthClientSecret) });
+        }
+    }
+}

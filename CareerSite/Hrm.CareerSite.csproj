@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<Version>4.0.0</Version>
+		<Company>Fourvision</Company>
+		<Copyright>Fourvision. All rights reserved.</Copyright>
+		<Product>Advanced HRM</Product>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<RootNamespace>Hrm.CareerSite</RootNamespace>
+		<AssemblyName>$(AssemblyName.Replace(' ', '_'))</AssemblyName>
+		<NeutralLanguage>en</NeutralLanguage>
+		<AnalysisLevel>latest</AnalysisLevel>
+		<AnalysisMode>recommended</AnalysisMode>
+		<PublishTrimmed>false</PublishTrimmed>
+		<CodeAnalysisTreatWarningsAsErrors>false</CodeAnalysisTreatWarningsAsErrors>
+		<EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+		<Configurations>Debug;Release</Configurations>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<GenerateRuntimeConfigurationFiles>true</GenerateRuntimeConfigurationFiles>
+		<NoWarn>$(NoWarn),1573,1712</NoWarn>
+	</PropertyGroup>
+	<PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+		<TypeScriptTarget>ESNext</TypeScriptTarget>
+	</PropertyGroup>
+	<PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+		<TypeScriptTarget>ESNext</TypeScriptTarget>
+	</PropertyGroup>
+</Project>
