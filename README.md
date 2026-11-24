@@ -4,13 +4,53 @@ Starter .NET web app for building a branded external careers site on top of Four
 
 Repository: https://github.com/FourVision/HRM.CareerSite
 
+Reference: [CareerSite SDK template (FourVision Wiki)](https://portal.fourvision.com/Wiki?Page=%2fRecruitment%2fCareerSite-SDK.md)
+
 ## Overview
 
-This project provides a configurable external careers website for displaying vacancies and capturing job applications from a FourVision Advanced HRM environment. It is designed to be branded and hosted for a company-specific careers page while using the upstream HRM API as the source of truth for jobs and application data.
+This project provides a configurable public careers website for displaying vacancies and capturing job applications from a FourVision Advanced HRM environment. It is designed to be branded and hosted for a company-specific careers page while using the upstream HRM API as the source of truth for jobs and application data.
 
-## Legal notice
+The CareerSite SDK template gives organizations a fast way to build an external-facing recruitment experience without duplicating the recruitment process in another system. The public site keeps vacancy and application management in A-HRM while the website itself remains a branded presentation layer for candidates.
 
-HRM.CareerSite is copyright © FourVision and remains the property of FourVision. This template site is available for licensed customers of Advanced HRM and is intended for use only within the scope of valid licensing and customer agreements. Any reuse, redistribution, or deployment outside the terms of a valid Advanced HRM license requires explicit written permission from FourVision.
+## What the template does
+
+The CareerSite SDK template is a .NET web application that lets you:
+
+- Show published vacancies on a public site.
+- Open a vacancy-specific application form.
+- Submit candidate applications back to the configured A-HRM environment.
+- Use either API key or OAuth authentication for the connection to A-HRM.
+- Keep recruitment setup and process logic in A-HRM while presenting a separate public careers experience.
+
+## When to use it
+
+Use this template when you want:
+
+- A public careers site with your own branding.
+- Vacancy pages outside the built-in Opportunity Hub.
+- A custom portal or website that still uses A-HRM as the system of record for vacancies and applications.
+- A consistent recruitment process across internal and external candidates.
+
+## Site entry points
+
+| Route | Purpose |
+|---|---|
+| `/` | Public vacancy listing and search experience. |
+| `/apply/{JobId}` | Candidate application form for a selected vacancy. |
+
+## How the public application flow works
+
+A typical external candidate journey looks like this:
+
+1. A vacancy is configured for external publication.
+2. The vacancy appears on the public CareerSite.
+3. A candidate opens the vacancy and selects Apply.
+4. The candidate completes the required personal and application details.
+5. The CareerSite sends the application to A-HRM.
+6. A-HRM creates the corresponding applicant and application records.
+7. The recruiter continues the recruitment workflow in A-HRM.
+
+This design keeps the public-facing site separate from the core A-HRM experience while still using the same recruitment records, vacancy data, and application flow.
 
 ## Requirements
 
@@ -70,10 +110,21 @@ The repository also includes deployment pipelines for Azure:
 - `azure-web-app-pipelines.yml`
 - `azure-web-app-careersite.bicep`
 
-## Site routes
+## Recommended implementation setup
 
-- `/` - vacancy listing and search
-- `/apply/{JobId}` - application form for a selected vacancy
+Before going live, confirm the following:
+
+- The relevant vacancies are published for external access.
+- Recruitment default settings, number sequences, and application stages are configured.
+- Candidate source mapping is set up for externally submitted applications.
+- Any required CV or supporting document settings are configured.
+- The integration identity used by the CareerSite has the necessary access to create applicant and application records.
+
+## Security considerations
+
+The public site does not require the candidate to have an A-HRM user account. The site itself should use a dedicated service or integration identity with the minimum permissions required to create the applicant and application records in A-HRM.
+
+Keep the public website identity separate from the recruiter identity and do not grant public users interactive A-HRM roles.
 
 ## Notes
 
@@ -85,3 +136,15 @@ The repository also includes deployment pipelines for Azure:
 ## Support and customization
 
 This repository is a starter project for building a careers site. Custom branding, vacancy styling, and workflow changes should be made in line with your customer requirements and the applicable licensing terms for Advanced HRM.
+
+## Legal notice
+
+HRM.CareerSite is copyright © FourVision and remains the property of FourVision. This template site is available for licensed customers of Advanced HRM and is intended for use only within the scope of valid licensing and customer agreements. Any reuse, redistribution, or deployment outside the terms of a valid Advanced HRM license requires explicit written permission from FourVision.
+
+## Related information
+
+- [CareerSite SDK template (FourVision Wiki)](https://portal.fourvision.com/Wiki?Page=%2fRecruitment%2fCareerSite-SDK.md)
+
+## Summary
+
+The CareerSite SDK template gives organizations a fast way to build a public careers experience while keeping vacancy and application management in A-HRM. It is a practical option when you want custom branding and an external-facing site without duplicating the recruitment process in another system.

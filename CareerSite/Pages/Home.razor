@@ -178,11 +178,7 @@ else
                         <div>
                             <h2 class="oh-card-title">@job.JobTitle</h2>
                             <p class="oh-meta">@job.DepartmentName</p>
-                            @if (job.IsApplied)
-                            {
-                                <span class="oh-badge oh-badge-info">Applied</span>
-                            }
-                            else if (job.DaysToClose is > 0 and <= 7)
+                            @if (job.DaysToClose is > 0 and <= 7)
                             {
                                 <span class="oh-badge">Closing soon</span>
                             }
